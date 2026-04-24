@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Policy Portal — Railway Administration</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- ═══════════════════════════════════════════════════
+     FIREBASE SDK  (loaded from CDN — no install needed)
+════════════════════════════════════════════════════ -->
+<script type="module">
+/*
+   ╔══════════════════════════════════════════════════════════════╗
+   ║  STEP 1 — Firebase config (already filled in below)         ║
+   ║                                                              ║
+   ║  STEP 2 — Google Drive OAuth setup:                          ║
+   ║  1. Go to https://console.cloud.google.com                  ║
+   ║  2. Select your Firebase project                             ║
+   ║  3. APIs & Services → Enable "Google Drive API"             ║
+   ║  4. Credentials → Create OAuth 2.0 Client ID (Web app)      ║
+   ║  5. Add your site URL to Authorized JavaScript Origins       ║
+   ║  6. Copy the Client ID and paste below                       ║
+   ║                                                              ║
+   ║  STEP 3 — Firebase Console:                                  ║
+   ║  • Firestore Database → Create database → Start in test mode ║
+   ║  (NO Firebase Storage needed — files go to Google Drive!)   ║
+   ╚══════════════════════════════════════════════════════════════╝
+*/
+const firebaseConfig = {
+  apiKey:            "AIzaSyCHHHo0fvGPEDVKB6FmbnUWPQkErqIG3GI",
+  authDomain:        "mechanical-policy-portal-36df4.firebaseapp.com",
+  projectId:         "mechanical-policy-portal-36df4",
+  storageBucket:     "mechanical-policy-portal-36df4.firebasestorage.app",
+  messagingSenderId: "418081500164",
+  appId:             "1:418081500164:web:cbc9ade8edd38f69385951",
+  measurementId:     "G-D49G795JEX"
+};
+
+// Google Drive config — replace with your OAuth 2.0 Client ID
+const GOOGLE_CLIENT_ID = "377106661823-lqqd20cv9plsflb4efn9odrunsvhiavs.apps.googleusercontent.com";
+const DRIVE_FOLDER_ID  = "1cAA-J6huLQif73SP2O6-T2249h054Pk_";
+const DRIVE_SCOPE      = "https://www.googleapis.com/auth/drive.file";
+
+import { initializeApp }                        from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, getDocs,
+         addDoc, doc, deleteDoc, updateDoc,
+         onSnapshot, query, orderBy }           from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword,
+         signOut, onAuthStateChanged }          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const ADMIN_EMAIL = "cta.srdmecnwumb@gmail.com";
+
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const auth = getAuth(app);
+
+window._fb = { db, auth, collection, getDocs, addDoc, doc,
+               deleteDoc, updateDoc, onSnapshot, query, orderBy,
+               signInWithEmailAndPassword, signOut, onAuthStateChanged,
+               ADMIN_EMAIL, GOOGLE_CLIENT_ID, DRIVE_FOLDER_ID, DRIVE_SCOPE };
+window._fbReady = true;
+console.log("✅ Firebase + Auth ready (Google Drive storage)");
+</script>
+<!-- Google Identity Services for Drive OAuth token -->
+<script src="https://accounts.google.com/gsi/client" async></script>
+
+<style>
+  :root {
+    --navy:   #0a1628;
+    --navy2:  #0f2040;
+    --gold:   #c9a84c;
+    --gold2:  #f0c96a;
+    --cream:  #f5f0e8;
+    --red:    #c0392b;
+    --green:  #1a6b3a;
+    --muted:  #7a8a99;
+    --white:  #ffffff;
+    --border: rgba(201,168,76,0.25);
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  body{
+    font-family:'IBM Plex Sans',sans-serif;
+    background:var(--navy); color:var(--cream);
+    min-height:100vh; overflow-x:hidden;
+  }
+  body::before{
+    content:''; position:fixed; inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events:none; z-index:0; opacity:.5;
+  }
+
+  /* ── HEADER ── */
+  header{
+    background:linear-gradient(135deg,var(--navy2) 0%,#071020 100%);
+    border-bottom:2px solid var(--gold);
+    padding:0 2rem; position:sticky; top:0; z-index:100;
+    display:flex; align-items:center; justify-content:space-between;
+    height:70px; box-shadow:0 4px 30px rgba(0,0,0,.5);
+  }
+  .logo{ display:flex; align-items:center; gap:14px; }
+  .logo-icon{ width:42px; height:42px; background:linear-gradient(135deg,var(--gold),var(--gold2)); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:20px; }
+  .logo-text h1{ font-family:'Playfair Display',serif; font-size:1.1rem; color:var(--gold); letter-spacing:.5px; }
+  .logo-text p{ font-family:'IBM Plex Mono',monospace; font-size:.65rem; color:var(--muted); letter-spacing:2px; text-transform:uppercase; }
+  .header-actions{ display:flex; align-items:center; gap:12px; }
+
+  /* ── BUTTONS ── */
+  .btn{ padding:8px 18px; border-radius:6px; font-family:'IBM Plex Mono',monospace; font-size:.75rem; letter-spacing:1px; cursor:pointer; border:none; transition:all .2s; }
+  .btn-gold{ background:var(--gold); color:var(--navy); font-weight:600; }
+  .btn-gold:hover{ background:var(--gold2); transform:translateY(-1px); }
+  .btn-gold:disabled{ opacity:.5; cursor:not-allowed; transform:none; }
+  .btn-outline{ background:transparent; border:1px solid var(--border); color:var(--cream); }
+  .btn-outline:hover{ border-color:var(--gold); color:var(--gold); }
+  .btn-sm{ padding:5px 12px; font-size:.68rem; }
+  .btn-danger{ background:rgba(192,57,43,.18); border:1px solid rgba(192,57,43,.4); color:#e74c3c; border-radius:6px; padding:5px 10px; font-size:.72rem; cursor:pointer; transition:all .2s; font-family:'IBM Plex Mono',monospace; }
+  .btn-danger:hover{ background:rgba(192,57,43,.35); }
+  .btn-rename{ background:rgba(201,168,76,.12); border:1px solid rgba(201,168,76,.3); color:var(--gold); border-radius:6px; padding:5px 10px; font-size:.72rem; cursor:pointer; transition:all .2s; font-family:'IBM Plex Mono',monospace; }
+  .btn-rename:hover{ background:rgba(201,168,76,.25); }
+
+  /* ── HERO ── */
+  .hero{ padding:60px 2rem 40px; text-align:center; position:relative; }
+  .hero::after{ content:''; position:absolute; bottom:0; left:50%; transform:translateX(-50%); width:120px; height:2px; background:linear-gradient(90deg,transparent,var(--gold),transparent); }
+  .hero-badge{ display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:.7rem; letter-spacing:3px; text-transform:uppercase; color:var(--gold); border:1px solid var(--border); padding:5px 16px; border-radius:20px; margin-bottom:20px; animation:fadeIn .6s ease; }
+  .hero h2{ font-family:'Playfair Display',serif; font-size:clamp(2rem,5vw,3.5rem); color:var(--white); line-height:1.15; margin-bottom:14px; animation:slideUp .7s ease; }
+  .hero h2 span{ color:var(--gold); }
+  .hero p{ color:var(--muted); font-size:1rem; max-width:500px; margin:0 auto 32px; animation:slideUp .8s ease; }
+
+  /* ── SEARCH ── */
+  .search-wrap{ max-width:600px; margin:0 auto; position:relative; animation:slideUp .9s ease; }
+  .search-wrap input{ width:100%; padding:16px 60px 16px 20px; background:rgba(255,255,255,.06); border:1.5px solid var(--border); border-radius:50px; color:var(--cream); font-family:'IBM Plex Sans',sans-serif; font-size:.95rem; outline:none; transition:border .2s,background .2s; }
+  .search-wrap input::placeholder{ color:var(--muted); }
+  .search-wrap input:focus{ border-color:var(--gold); background:rgba(255,255,255,.1); }
+  .search-wrap .search-icon{ position:absolute; right:18px; top:50%; transform:translateY(-50%); color:var(--gold); font-size:1.2rem; pointer-events:none; }
+  #searchResults{ max-width:600px; margin:8px auto 0; background:var(--navy2); border:1px solid var(--border); border-radius:12px; overflow:hidden; display:none; }
+  .search-result-item{ padding:12px 18px; cursor:pointer; display:flex; align-items:center; gap:12px; border-bottom:1px solid rgba(255,255,255,.05); transition:background .15s; }
+  .search-result-item:hover{ background:rgba(201,168,76,.1); }
+  .search-result-item:last-child{ border-bottom:none; }
+  .sri-cat{ font-family:'IBM Plex Mono',monospace; font-size:.6rem; text-transform:uppercase; letter-spacing:1.5px; color:var(--gold); background:rgba(201,168,76,.1); padding:2px 8px; border-radius:4px; white-space:nowrap; }
+  .sri-name{ font-size:.88rem; color:var(--cream); }
+
+  /* ── TILES ── */
+  .categories{ padding:50px 2rem; max-width:1200px; margin:0 auto; }
+  .section-label{ font-family:'IBM Plex Mono',monospace; font-size:.7rem; letter-spacing:3px; text-transform:uppercase; color:var(--gold); margin-bottom:24px; display:flex; align-items:center; gap:10px; }
+  .section-label::after{ content:''; flex:1; height:1px; background:var(--border); }
+  .tiles-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:20px; }
+  .tile{ background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:14px; padding:28px 24px; cursor:pointer; transition:all .25s; position:relative; overflow:hidden; }
+  .tile::before{ content:''; position:absolute; inset:0; background:linear-gradient(135deg,rgba(201,168,76,.06),transparent); opacity:0; transition:opacity .25s; }
+  .tile:hover{ border-color:var(--gold); transform:translateY(-4px); box-shadow:0 12px 40px rgba(0,0,0,.4); }
+  .tile:hover::before{ opacity:1; }
+  .tile-icon{ font-size:2.2rem; margin-bottom:14px; display:block; }
+  .tile-name{ font-family:'Playfair Display',serif; font-size:1.1rem; color:var(--white); margin-bottom:6px; }
+  .tile-count{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; color:var(--muted); letter-spacing:1px; }
+  .tile-arrow{ position:absolute; right:20px; top:50%; transform:translateY(-50%); color:var(--gold); opacity:0; transition:opacity .2s,right .2s; font-size:1.2rem; }
+  .tile:hover .tile-arrow{ opacity:1; right:16px; }
+
+  /* ── SECTION PANEL ── */
+  #sectionPanel{ display:none; padding:0 2rem 60px; max-width:1200px; margin:0 auto; animation:fadeIn .4s ease; }
+  .panel-header{ display:flex; align-items:center; gap:16px; margin-bottom:32px; padding:16px 0 20px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .back-btn{ background:rgba(255,255,255,.06); border:1px solid var(--border); color:var(--cream); width:38px; height:38px; border-radius:8px; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center; transition:all .2s; flex-shrink:0; }
+  .back-btn:hover{ border-color:var(--gold); color:var(--gold); }
+  .panel-title{ font-family:'Playfair Display',serif; font-size:1.8rem; color:var(--white); }
+  .panel-subtitle{ font-family:'IBM Plex Mono',monospace; font-size:.7rem; color:var(--muted); letter-spacing:2px; text-transform:uppercase; margin-top:4px; }
+  .panel-header-actions{ margin-left:auto; display:flex; gap:10px; align-items:center; }
+
+  .docs-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+  .doc-card{ background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:18px 20px; display:flex; align-items:center; gap:14px; transition:all .2s; }
+  .doc-card:hover{ border-color:var(--gold); background:rgba(201,168,76,.06); }
+  .doc-icon{ width:42px; height:42px; background:linear-gradient(135deg,rgba(201,168,76,.15),rgba(201,168,76,.05)); border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.3rem; flex-shrink:0; }
+  .doc-info{ flex:1; min-width:0; }
+  .doc-name{ font-size:.88rem; color:var(--white); font-weight:500; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .doc-meta{ font-family:'IBM Plex Mono',monospace; font-size:.65rem; color:var(--muted); letter-spacing:1px; }
+  .doc-link{ color:var(--gold); font-size:.85rem; text-decoration:none; flex-shrink:0; opacity:0; transition:opacity .2s; }
+  .doc-card:hover .doc-link{ opacity:1; }
+  .doc-admin-strip{ display:flex; gap:6px; flex-shrink:0; }
+
+  /* ── UPLOAD ZONE ── */
+  .upload-zone{ border:2px dashed var(--border); border-radius:12px; padding:28px; text-align:center; cursor:pointer; transition:all .2s; position:relative; margin-top:8px; }
+  .upload-zone:hover,.upload-zone.drag-over{ border-color:var(--gold); background:rgba(201,168,76,.05); }
+  .upload-zone input[type=file]{ position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+  .upload-zone-icon{ font-size:1.8rem; margin-bottom:8px; }
+  .upload-zone p{ color:var(--muted); font-size:.84rem; }
+  .upload-zone p span{ color:var(--gold); font-weight:600; }
+  .selected-file{ margin-top:8px; font-size:.8rem; color:var(--gold); display:none; }
+
+  /* Progress */
+  .progress-wrap{ margin-top:12px; background:rgba(255,255,255,.08); border-radius:50px; height:6px; overflow:hidden; display:none; }
+  .progress-bar{ height:100%; background:linear-gradient(90deg,var(--gold),var(--gold2)); border-radius:50px; transition:width .2s; width:0%; }
+
+  /* ── ADMIN PANEL ── */
+  #adminPanel{ display:none; padding:0 2rem 60px; max-width:900px; margin:0 auto; animation:fadeIn .4s ease; }
+  .admin-section{ background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:14px; padding:28px; margin-bottom:24px; }
+  .admin-section h3{ font-family:'Playfair Display',serif; font-size:1.1rem; color:var(--gold); margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+  .form-group{ margin-bottom:16px; }
+  .form-group label{ display:block; font-family:'IBM Plex Mono',monospace; font-size:.7rem; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .form-group input,.form-group select{ width:100%; padding:10px 14px; background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:8px; color:var(--cream); font-family:'IBM Plex Sans',sans-serif; font-size:.88rem; outline:none; transition:border .2s; }
+  .form-group input:focus,.form-group select:focus{ border-color:var(--gold); }
+  .form-group select option{ background:var(--navy2); }
+  .form-row{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+
+  .admin-doc-item{ display:flex; align-items:center; gap:10px; padding:12px 16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06); border-radius:8px; margin-bottom:8px; flex-wrap:wrap; }
+  .admin-doc-label{ flex:1; font-size:.85rem; min-width:80px; }
+  .admin-doc-cat{ font-family:'IBM Plex Mono',monospace; font-size:.62rem; color:var(--gold); background:rgba(201,168,76,.1); padding:2px 8px; border-radius:4px; white-space:nowrap; }
+  .fb-badge{ font-size:.62rem; color:#4CAF50; font-family:'IBM Plex Mono',monospace; white-space:nowrap; }
+  .local-badge{ font-size:.62rem; color:var(--muted); font-family:'IBM Plex Mono',monospace; white-space:nowrap; }
+
+  /* Firebase status banner */
+  .fb-banner{ border-radius:10px; padding:14px 18px; margin-bottom:22px; display:flex; align-items:flex-start; gap:12px; }
+  .fb-banner.ok{ background:rgba(76,175,80,.1); border:1px solid rgba(76,175,80,.3); }
+  .fb-banner.warn{ background:rgba(201,168,76,.1); border:1px solid rgba(201,168,76,.3); }
+  .fb-banner-icon{ font-size:1.3rem; flex-shrink:0; margin-top:2px; }
+  .fb-banner-title{ font-family:'IBM Plex Mono',monospace; font-size:.78rem; letter-spacing:1px; text-transform:uppercase; margin-bottom:4px; }
+  .fb-banner.ok .fb-banner-title{ color:#4CAF50; }
+  .fb-banner.warn .fb-banner-title{ color:var(--gold); }
+  .fb-banner-body{ font-size:.82rem; color:var(--muted); line-height:1.6; }
+  .fb-banner-body code{ font-family:'IBM Plex Mono',monospace; background:rgba(255,255,255,.08); padding:1px 6px; border-radius:3px; font-size:.8em; color:var(--cream); }
+  .fb-banner-body a{ color:var(--gold); }
+
+  /* ── MODAL ── */
+  .modal-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.8); backdrop-filter:blur(6px); z-index:999; display:flex; align-items:center; justify-content:center; animation:fadeIn .3s ease; }
+  .modal-overlay.hidden{ display:none; }
+  .modal{ background:var(--navy2); border:1px solid var(--border); border-radius:16px; padding:36px; width:420px; max-width:95vw; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+  .modal h3{ font-family:'Playfair Display',serif; font-size:1.4rem; color:var(--gold); margin-bottom:6px; }
+  .modal > p{ color:var(--muted); font-size:.85rem; margin-bottom:22px; }
+  .modal-close{ float:right; background:none; border:none; color:var(--muted); font-size:1.2rem; cursor:pointer; }
+  .error-msg{ background:rgba(192,57,43,.15); border:1px solid rgba(192,57,43,.3); color:#e74c3c; padding:10px 14px; border-radius:8px; font-size:.8rem; margin-bottom:14px; }
+  .modal-row{ display:flex; gap:10px; margin-top:10px; }
+  .modal-row .btn{ flex:1; }
+
+  /* ── TOAST ── */
+  #toast{ position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--navy2); border:1px solid var(--border); border-radius:10px; padding:13px 22px; font-family:'IBM Plex Mono',monospace; font-size:.78rem; color:var(--cream); z-index:9999; transition:transform .3s ease; white-space:nowrap; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+  #toast.show{ transform:translateX(-50%) translateY(0); }
+  #toast.ok{ border-color:rgba(76,175,80,.5); color:#4CAF50; }
+  #toast.err{ border-color:rgba(192,57,43,.5); color:#e74c3c; }
+  #toast.info{ border-color:var(--border); color:var(--gold2); }
+
+  /* spinner */
+  .spin{ display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,.2); border-top-color:var(--gold); border-radius:50%; animation:spinning .7s linear infinite; vertical-align:middle; margin-right:5px; }
+  @keyframes spinning{ to{ transform:rotate(360deg); } }
+
+  /* ── FOOTER ── */
+  footer{ border-top:1px solid var(--border); padding:20px 2rem; display:flex; justify-content:space-between; align-items:center; opacity:.6; }
+  footer p{ font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:1.5px; color:var(--muted); text-transform:uppercase; }
+
+  @keyframes fadeIn{ from{opacity:0} to{opacity:1} }
+  @keyframes slideUp{ from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+  @media(max-width:640px){
+    .tiles-grid{ grid-template-columns:1fr 1fr; }
+    .form-row{ grid-template-columns:1fr; }
+    .docs-grid{ grid-template-columns:1fr; }
+    header{ padding:0 1rem; }
+    .logo-text h1{ font-size:.9rem; }
+    .panel-header-actions{ width:100%; }
+    .admin-doc-item{ font-size:.8rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🚂</div>
+    <div class="logo-text">
+      <h1>Policy Portal</h1>
+      <p>Railway Administration · Document Hub</p>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-outline" onclick="showHome()" id="homeBtn" style="display:none">⌂ Home</button>
+    <button class="btn btn-outline" onclick="openLoginModal()" id="adminBtn">🔒 Admin</button>
+    <button class="btn btn-outline" onclick="doLogout()" id="logoutBtn" style="display:none">↩ Logout</button>
+  </div>
+</header>
+
+<!-- ── HOME VIEW ── -->
+<div id="homeView">
+  <section class="hero">
+    <div class="hero-badge">🗂 Official Document Repository</div>
+    <h2>Find Any <span>Policy</span><br>In Seconds</h2>
+    <p>Centralized access to all administrative circulars, contracts, manuals & operational procedures.</p>
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Search policies, circulars, manuals…" oninput="handleSearch(this.value)" autocomplete="off">
+      <span class="search-icon">🔍</span>
+    </div>
+    <div id="searchResults"></div>
+  </section>
+  <section class="categories">
+    <div class="section-label">Browse by Category</div>
+    <div class="tiles-grid" id="tilesGrid"></div>
+  </section>
+</div>
+
+<!-- ── SECTION PANEL ── -->
+<div id="sectionPanel">
+  <div class="panel-header" style="margin-top:10px;">
+    <button class="back-btn" onclick="showHome()">←</button>
+    <div>
+      <div class="panel-title" id="panelTitle"></div>
+      <div class="panel-subtitle" id="panelSubtitle"></div>
+    </div>
+    <div class="panel-header-actions" id="sectionAdminBar" style="display:none">
+      <button class="btn btn-gold btn-sm" onclick="openSectionUpload()">⬆ Upload Document</button>
+    </div>
+  </div>
+  <div class="docs-grid" id="docsGrid"></div>
+</div>
+
+<!-- ── ADMIN PANEL ── -->
+<div id="adminPanel">
+  <div class="panel-header" style="margin-top:10px;">
+    <button class="back-btn" onclick="showHome()">←</button>
+    <div>
+      <div class="panel-title">Admin Dashboard</div>
+      <div class="panel-subtitle">Manage Policies & Documents via Firebase</div>
+    </div>
+  </div>
+
+  <!-- Firebase status -->
+  <div id="fbBanner"></div>
+
+  <!-- Upload New Doc -->
+  <div class="admin-section">
+    <h3>⬆ Upload New Document</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Document Name</label>
+        <input type="text" id="newDocName" placeholder="e.g. Safety Circular 2024-01">
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="newDocCat"><option value="">-- Select --</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Document Type</label>
+        <select id="newDocType">
+          <option value="PDF">📄 PDF</option>
+          <option value="DOCX">📝 Word Document</option>
+          <option value="XLS">📊 Excel Sheet</option>
+          <option value="PPT">📊 Presentation</option>
+          <option value="CIRCULAR">📋 Circular</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Year / Version</label>
+        <input type="text" id="newDocYear" placeholder="e.g. 2024">
+      </div>
+    </div>
+
+    <div class="upload-zone" id="dropZone"
+         ondragover="dzOver(event,'dropZone')" ondragleave="dzLeave('dropZone')" ondrop="dzDrop(event,'dropZone','mainFile','mainFileName')">
+      <input type="file" id="mainFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+             onchange="fileChosen('mainFile','mainFileName')">
+      <div class="upload-zone-icon">☁️</div>
+      <p><span>Click to choose a file</span> or drag & drop here</p>
+      <p style="font-size:.74rem;margin-top:5px;">PDF · DOCX · XLS · XLSX · PPT · PPTX</p>
+    </div>
+    <div class="selected-file" id="mainFileName"></div>
+    <div class="progress-wrap" id="mainProgressWrap"><div class="progress-bar" id="mainProgress"></div></div>
+    <button class="btn btn-gold" id="mainUploadBtn" style="margin-top:14px;" onclick="doMainUpload()">Upload to Drive →</button>
+  </div>
+
+  <!-- Categories are fixed: Contracts, M&P, T&P, Coaching, Freight, Material Procurement, MSOP 2018 -->
+
+  <!-- All Docs -->
+  <div class="admin-section">
+    <h3>📋 All Documents</h3>
+    <div id="adminDocList"><p style="color:var(--muted);font-size:.85rem;">Loading…</p></div>
+  </div>
+</div>
+
+<!-- ── LOGIN MODAL ── -->
+<div class="modal-overlay hidden" id="loginModal" onclick="overlayClose(event,'loginModal')">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('loginModal')">✕</button>
+    <h3>🔒 Admin Login</h3>
+    <p>Sign in with your authorised email to manage documents</p>
+    <div class="error-msg" id="loginErr" style="display:none">Incorrect credentials. Try again.</div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="loginUser" placeholder="admin@email.com">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-gold" style="width:100%;margin-top:8px;" onclick="doLogin()">Login →</button>
+    <div id="loginSpinner" style="display:none;text-align:center;margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:.8rem;color:var(--gold);"><span class="spin"></span> Signing in…</div>
+  </div>
+</div>
+
+<!-- ── RENAME MODAL ── -->
+<div class="modal-overlay hidden" id="renameModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('renameModal')">✕</button>
+    <h3>Rename Document</h3>
+    <p>Update the display name of this document</p>
+    <div class="form-group">
+      <label>New Name</label>
+      <input type="text" id="renameInput" placeholder="New document name">
+    </div>
+    <div class="modal-row">
+      <button class="btn btn-gold" onclick="confirmRename()">Save →</button>
+      <button class="btn btn-outline" onclick="closeModal('renameModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION UPLOAD MODAL ── -->
+<div class="modal-overlay hidden" id="sectionUploadModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('sectionUploadModal')">✕</button>
+    <h3>Upload Document</h3>
+    <p id="sUploadSubtitle">Upload to this section</p>
+    <div class="form-group">
+      <label>Document Name</label>
+      <input type="text" id="sDocName" placeholder="Policy Circular 2024">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Type</label>
+        <select id="sDocType">
+          <option value="PDF">📄 PDF</option>
+          <option value="DOCX">📝 Word</option>
+          <option value="XLS">📊 Excel</option>
+          <option value="PPT">📊 PPT</option>
+          <option value="CIRCULAR">📋 Circular</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Year</label>
+        <input type="text" id="sDocYear" placeholder="2024">
+      </div>
+    </div>
+    <div class="upload-zone" style="padding:20px;" id="sDropZone"
+         ondragover="dzOver(event,'sDropZone')" ondragleave="dzLeave('sDropZone')" ondrop="dzDrop(event,'sDropZone','sFile','sFileName')">
+      <input type="file" id="sFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onchange="fileChosen('sFile','sFileName')">
+      <div class="upload-zone-icon" style="font-size:1.4rem;">☁️</div>
+      <p><span>Click to choose</span> or drag & drop</p>
+    </div>
+    <div class="selected-file" id="sFileName"></div>
+    <div class="progress-wrap" id="sProgressWrap"><div class="progress-bar" id="sProgress"></div></div>
+    <button class="btn btn-gold" id="sUploadBtn" style="width:100%;margin-top:14px;" onclick="doSectionUpload()">Upload →</button>
+  </div>
+</div>
+
+<footer>
+  <p>© 2024 Railway Administration — Policy Portal</p>
+  <p id="footerMode">📁 Firebase + Drive</p>
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  WAIT FOR FIREBASE MODULE THEN BOOT
+// ═══════════════════════════════════════════════════════════
+let FB;  // firebase helpers
+
+async function waitForFirebase(tries = 0) {
+  if (window._fbReady) {
+    boot();
+    return;
+  }
+  if (tries > 40) { showToast('Firebase load timeout', 'err'); return; }
+  setTimeout(() => waitForFirebase(tries + 1), 100);
+}
+waitForFirebase();
+
+// ═══════════════════════════════════════════════════════════
+//  LOCAL DEFAULTS (shown when Firebase is not yet configured)
+// ═══════════════════════════════════════════════════════════
+const DEFAULT_CATEGORIES = [
+  { id:'contracts',  name:'Contracts',            icon:'📜' },
+  { id:'mp',         name:'M&P',                  icon:'🔧' },
+  { id:'tp',         name:'T&P',                  icon:'🔩' },
+  { id:'coaching',   name:'Coaching',              icon:'🚌' },
+  { id:'freight',    name:'Freight',               icon:'📦' },
+  { id:'material',   name:'Material Procurement',  icon:'🏗️' },
+  { id:'msop',       name:'MSOP 2018',             icon:'📋' },
+];
+const DEFAULT_DOCS = [
+  { id:'d1',  name:'Works Contract Guidelines 2023',       cat:'contracts', type:'PDF',      year:'2023', url:'#', storagePath:null },
+  { id:'d2',  name:'Service Contract Template',             cat:'contracts', type:'DOCX',     year:'2022', url:'#', storagePath:null },
+  { id:'d3',  name:'Bridge M&P Circular No. 45',           cat:'mp',        type:'CIRCULAR', year:'2024', url:'#', storagePath:null },
+  { id:'d4',  name:'Track Maintenance Handbook',            cat:'mp',        type:'PDF',      year:'2021', url:'#', storagePath:null },
+  { id:'d5',  name:'T&P Indent Procedure',                  cat:'tp',        type:'PDF',      year:'2023', url:'#', storagePath:null },
+  { id:'d6',  name:'Tools Custody Policy',                  cat:'tp',        type:'CIRCULAR', year:'2022', url:'#', storagePath:null },
+  { id:'d7',  name:'Coaching Depot Safety Rules',           cat:'coaching',  type:'PDF',      year:'2023', url:'#', storagePath:null },
+  { id:'d8',  name:'Passenger Coach Maintenance Manual',    cat:'coaching',  type:'PDF',      year:'2020', url:'#', storagePath:null },
+  { id:'d9',  name:'Freight Loading Standards',             cat:'freight',   type:'PDF',      year:'2024', url:'#', storagePath:null },
+  { id:'d10', name:'Goods Train Operations Circular',       cat:'freight',   type:'CIRCULAR', year:'2023', url:'#', storagePath:null },
+  { id:'d11', name:'Material Procurement Manual 2022',      cat:'material',  type:'PDF',      year:'2022', url:'#', storagePath:null },
+  { id:'d12', name:'Tender Process Guidelines',             cat:'material',  type:'DOCX',     year:'2023', url:'#', storagePath:null },
+  { id:'d13', name:'MSOP 2018 — Full Document',             cat:'msop',      type:'PDF',      year:'2018', url:'#', storagePath:null },
+  { id:'d14', name:'MSOP Amendments 2021',                  cat:'msop',      type:'CIRCULAR', year:'2021', url:'#', storagePath:null },
+  { id:'d15', name:'MSOP Quick Reference Card',             cat:'msop',      type:'PDF',      year:'2018', url:'#', storagePath:null },
+];
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let isAdmin      = false;
+let isFirebase   = true;   // always firebase
+let currentCatId = null;
+let renameDocId  = null;
+let CATEGORIES   = [];
+let DOCS         = [];
+
+// ═══════════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════════
+async function boot() {
+  FB = window._fb;
+  isFirebase = true;
+
+  // Watch auth state — keeps admin status in sync across tabs/refreshes
+  FB.onAuthStateChanged(FB.auth, user => {
+    if (user && user.email === FB.ADMIN_EMAIL) {
+      isAdmin = true;
+      document.getElementById('adminBtn').style.display  = 'none';
+      document.getElementById('logoutBtn').style.display = 'inline-block';
+      // Refresh current view to show admin controls
+      if (currentCatId) showSection(currentCatId);
+      if (document.getElementById('adminPanel').style.display === 'block') {
+        refreshAdminCatSelect(); renderAdminDocList(); renderFbBanner();
+      }
+    } else {
+      isAdmin = false;
+      document.getElementById('adminBtn').style.display  = 'inline-block';
+      document.getElementById('logoutBtn').style.display = 'none';
+      if (currentCatId) showSection(currentCatId);
+    }
+  });
+
+  await loadFromFirebase();
+  listenFirebase();
+  document.getElementById('footerMode').textContent = '📁 Firebase + Google Drive';
+  renderTiles();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FIREBASE — READ (real-time listener)
+// ═══════════════════════════════════════════════════════════
+function listenFirebase() {
+  const { db, collection, onSnapshot } = FB;
+
+  // Categories are fixed — only docs are listened to in real-time
+  onSnapshot(collection(db, 'docs'), snap => {
+    DOCS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderTiles();
+    if (isAdmin) renderAdminDocList();
+    if (currentCatId) showSection(currentCatId);
+  });
+}
+
+async function loadFromFirebase() {
+  const { db, collection, getDocs } = FB;
+  try {
+    // Categories are always the fixed 7 folders — never loaded from Firestore
+    CATEGORIES = [...DEFAULT_CATEGORIES];
+
+    const dSnap = await getDocs(collection(db, 'docs'));
+    DOCS = dSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch(e) {
+    console.error('Firebase read failed:', e);
+    showToast('Firebase error — check Firestore rules', 'err');
+    CATEGORIES = [...DEFAULT_CATEGORIES];
+    DOCS = [];
+  }
+}
+
+// seed functions removed — categories are fixed, docs are Firebase-only
+
+// ═══════════════════════════════════════════════════════════
+//  LOCAL FALLBACK
+// ═══════════════════════════════════════════════════════════
+function loadLocalFallback() {
+  CATEGORIES = [...DEFAULT_CATEGORIES];
+  DOCS = [];
+}
+function saveLocal() { /* no-op: always Firebase */ }
+
+// ═══════════════════════════════════════════════════════════
+//  GOOGLE DRIVE — OAuth token management
+// ═══════════════════════════════════════════════════════════
+let _driveToken = null;
+let _tokenClient = null;
+
+function getDriveToken() {
+  return new Promise((resolve, reject) => {
+    if (_driveToken) { resolve(_driveToken); return; }
+
+    // Wait for GIS script to load
+    if (!window.google || !window.google.accounts) {
+      setTimeout(() => getDriveToken().then(resolve).catch(reject), 300);
+      return;
+    }
+
+    if (!_tokenClient) {
+      _tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: FB.GOOGLE_CLIENT_ID,
+        scope: FB.DRIVE_SCOPE,
+        callback: (resp) => {
+          if (resp.error) { reject(new Error(resp.error)); return; }
+          _driveToken = resp.access_token;
+          // Auto-clear token when it expires (~1hr)
+          setTimeout(() => { _driveToken = null; }, (resp.expires_in - 60) * 1000);
+          resolve(_driveToken);
+        }
+      });
+    }
+    _tokenClient.requestAccessToken({ prompt: 'none' });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UPLOAD FILE → GOOGLE DRIVE
+// ═══════════════════════════════════════════════════════════
+async function uploadFile(file, displayName, progressEl, progressWrapEl) {
+  if (progressWrapEl) progressWrapEl.style.display = 'block';
+  if (progressEl) progressEl.style.width = '5%';
+
+  let token;
+  try {
+    token = await getDriveToken();
+  } catch(e) {
+    // First time or token expired — prompt consent
+    token = await new Promise((resolve, reject) => {
+      _driveToken = null;
+      _tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: FB.GOOGLE_CLIENT_ID,
+        scope: FB.DRIVE_SCOPE,
+        callback: (resp) => {
+          if (resp.error) { reject(new Error(resp.error)); return; }
+          _driveToken = resp.access_token;
+          setTimeout(() => { _driveToken = null; }, (resp.expires_in - 60) * 1000);
+          resolve(_driveToken);
+        }
+      });
+      _tokenClient.requestAccessToken({ prompt: 'consent' });
+    });
+  }
+
+  const ext = file.name.split('.').pop();
+  const fileName = `${displayName.replace(/[^a-zA-Z0-9 \-_]/g,'_')}_${Date.now()}.${ext}`;
+
+  // Use multipart upload to Drive
+  const metadata = {
+    name: fileName,
+    parents: [FB.DRIVE_FOLDER_ID]
+  };
+
+  const boundary = '-------boundary_' + Date.now();
+  const metaPart = '--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' +
+                   JSON.stringify(metadata) + '\r\n';
+  const endPart  = '\r\n--' + boundary + '--';
+
+  // Read file as ArrayBuffer
+  const fileBuffer = await file.arrayBuffer();
+
+  // Build multipart body as Uint8Array
+  const encoder = new TextEncoder();
+  const metaBytes = encoder.encode(metaPart);
+  const fileMime = file.type || 'application/octet-stream';
+  const fileHeaderBytes = encoder.encode('--' + boundary + '\r\nContent-Type: ' + fileMime + '\r\n\r\n');
+  const endBytes = encoder.encode(endPart);
+
+  const body = new Uint8Array(metaBytes.length + fileHeaderBytes.length + fileBuffer.byteLength + endBytes.length);
+  let offset = 0;
+  body.set(metaBytes, offset);       offset += metaBytes.length;
+  body.set(fileHeaderBytes, offset); offset += fileHeaderBytes.length;
+  body.set(new Uint8Array(fileBuffer), offset); offset += fileBuffer.byteLength;
+  body.set(endBytes, offset);
+
+  if (progressEl) progressEl.style.width = '40%';
+
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'multipart/related; boundary=' + boundary
+      },
+      body: body
+    }
+  );
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('Drive upload failed: ' + errText);
+  }
+
+  const data = await res.json();
+  if (progressEl) progressEl.style.width = '70%';
+
+  // Make file publicly readable so the link works for all users
+  await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' })
+  });
+
+  if (progressEl) progressEl.style.width = '100%';
+
+  // webViewLink opens in Drive viewer, webContentLink for direct download
+  const url = data.webViewLink || `https://drive.google.com/file/d/${data.id}/view`;
+  return { url, driveFileId: data.id, storagePath: null };
+}
+
+async function saveDocToFirebase(docData) {
+  const { db, collection, addDoc } = FB;
+  const ref = await addDoc(collection(db, 'docs'), docData);
+  return ref.id;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MAIN ADMIN UPLOAD
+// ═══════════════════════════════════════════════════════════
+async function doMainUpload() {
+  const name = document.getElementById('newDocName').value.trim();
+  const cat  = document.getElementById('newDocCat').value;
+  const type = document.getElementById('newDocType').value;
+  const year = document.getElementById('newDocYear').value.trim();
+  const file = document.getElementById('mainFile').files[0];
+
+  if (!name || !cat) { showToast('Name and category are required', 'err'); return; }
+  if (!file)         { showToast('Please select a file', 'err'); return; }
+
+  const btn = document.getElementById('mainUploadBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Uploading…';
+
+  try {
+    let url = '#';
+    if (isFirebase) {
+      const result = await uploadFile(file, name,
+        document.getElementById('mainProgress'),
+        document.getElementById('mainProgressWrap'));
+      url = result.url;
+      await saveDocToFirebase({ name, cat, type, year, url, driveFileId: result.driveFileId });
+    }
+
+    // reset form
+    document.getElementById('newDocName').value = '';
+    document.getElementById('newDocYear').value = '';
+    document.getElementById('newDocCat').value = '';
+    document.getElementById('mainFileName').style.display = 'none';
+    document.getElementById('mainProgressWrap').style.display = 'none';
+    document.getElementById('mainProgress').style.width = '0%';
+    document.getElementById('mainFile').value = '';
+
+    showToast('✅ Document uploaded successfully!', 'ok');
+  } catch(e) {
+    console.error(e);
+    showToast('Upload failed: ' + e.message, 'err');
+  }
+
+  btn.disabled = false; btn.innerHTML = 'Upload to Drive →';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SECTION UPLOAD MODAL
+// ═══════════════════════════════════════════════════════════
+function openSectionUpload() {
+  const cat = CATEGORIES.find(c => c.id === currentCatId);
+  document.getElementById('sUploadSubtitle').textContent = 'Upload to: ' + (cat ? cat.icon + ' ' + cat.name : '');
+  document.getElementById('sDocName').value = '';
+  document.getElementById('sDocYear').value = '';
+  document.getElementById('sFileName').style.display = 'none';
+  document.getElementById('sProgressWrap').style.display = 'none';
+  document.getElementById('sProgress').style.width = '0%';
+  document.getElementById('sFile').value = '';
+  openModal('sectionUploadModal');
+}
+
+async function doSectionUpload() {
+  const name = document.getElementById('sDocName').value.trim();
+  const type = document.getElementById('sDocType').value;
+  const year = document.getElementById('sDocYear').value.trim();
+  const file = document.getElementById('sFile').files[0];
+  if (!name) { showToast('Enter a document name', 'err'); return; }
+  if (!file) { showToast('Select a file', 'err'); return; }
+
+  const btn = document.getElementById('sUploadBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Uploading…';
+
+  try {
+    let url = '#', storagePath = null;
+    if (isFirebase) {
+      const result = await uploadFile(file, name,
+        document.getElementById('sProgress'),
+        document.getElementById('sProgressWrap'));
+      url = result.url;
+      await saveDocToFirebase({ name, cat: currentCatId, type, year, url, driveFileId: result.driveFileId });
+    }
+    closeModal('sectionUploadModal');
+    showSection(currentCatId);
+    renderTiles();
+    showToast('✅ Document uploaded!', 'ok');
+  } catch(e) {
+    showToast('Upload failed: ' + e.message, 'err');
+  }
+  btn.disabled = false; btn.innerHTML = 'Upload →';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DELETE
+// ═══════════════════════════════════════════════════════════
+async function deleteDoc(id) {
+  if (!confirm('Delete this document?\nThe file will also be removed from Google Drive.')) return;
+
+  const docEntry = DOCS.find(d => d.id === id);
+  if (!docEntry) return;
+
+  showToast('Deleting…', 'info');
+  try {
+    // Delete from Firestore
+    await FB.deleteDoc(FB.doc(FB.db, 'docs', id));
+    // Delete file from Google Drive if we have the Drive file ID
+    if (docEntry.driveFileId) {
+      try {
+        const token = await getDriveToken();
+        await fetch(`https://www.googleapis.com/drive/v3/files/${docEntry.driveFileId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+      } catch(e) { console.warn('Drive file delete skipped:', e.message); }
+    }
+    showToast('✅ Deleted', 'ok');
+  } catch(e) {
+    showToast('Delete error: ' + e.message, 'err');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RENAME
+// ═══════════════════════════════════════════════════════════
+function openRenameModal(id) {
+  const docEntry = DOCS.find(d => d.id === id);
+  if (!docEntry) return;
+  renameDocId = id;
+  document.getElementById('renameInput').value = docEntry.name;
+  openModal('renameModal');
+}
+
+async function confirmRename() {
+  const newName = document.getElementById('renameInput').value.trim();
+  if (!newName) { showToast('Enter a name', 'err'); return; }
+
+  if (isFirebase) {
+    showToast('Renaming…', 'info');
+    try {
+      await FB.updateDoc(FB.doc(FB.db, 'docs', renameDocId), { name: newName });
+      showToast('✅ Renamed successfully', 'ok');
+    } catch(e) {
+      showToast('Rename failed: ' + e.message, 'err');
+    }
+  }
+  closeModal('renameModal');
+}
+
+// addCategory removed — categories are fixed
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════════
+function renderTiles() {
+  const grid = document.getElementById('tilesGrid');
+  grid.innerHTML = '';
+  CATEGORIES.forEach(cat => {
+    const count = DOCS.filter(d => d.cat === cat.id).length;
+    const tile  = document.createElement('div');
+    tile.className = 'tile';
+    tile.onclick   = () => showSection(cat.id);
+    tile.innerHTML = `
+      <span class="tile-icon">${cat.icon}</span>
+      <div class="tile-name">${cat.name}</div>
+      <div class="tile-count">${count} document${count !== 1 ? 's' : ''}</div>
+      <span class="tile-arrow">→</span>`;
+    grid.appendChild(tile);
+  });
+}
+
+function showSection(catId) {
+  currentCatId = catId;
+  const cat  = CATEGORIES.find(c => c.id === catId);
+  if (!cat) return;
+  const docs = DOCS.filter(d => d.cat === catId);
+
+  document.getElementById('homeView').style.display   = 'none';
+  document.getElementById('sectionPanel').style.display = 'block';
+  document.getElementById('adminPanel').style.display  = 'none';
+  document.getElementById('homeBtn').style.display     = 'inline-block';
+
+  document.getElementById('panelTitle').innerHTML    = cat.icon + ' ' + cat.name;
+  document.getElementById('panelSubtitle').textContent = docs.length + ' document(s) available';
+  document.getElementById('sectionAdminBar').style.display = isAdmin ? 'flex' : 'none';
+
+  const grid = document.getElementById('docsGrid');
+  grid.innerHTML = '';
+
+  if (!docs.length) {
+    grid.innerHTML = `<p style="color:var(--muted);grid-column:1/-1;padding:20px 0;">
+      No documents yet.${isAdmin ? ' Use "Upload Document" above.' : ''}</p>`;
+    return;
+  }
+
+  docs.forEach(doc => {
+    const card = document.createElement('div');
+    card.className = 'doc-card';
+
+    const hasLink = doc.url && doc.url !== '#';
+    card.innerHTML = `
+      <div class="doc-icon">${typeIcon(doc.type)}</div>
+      <div class="doc-info" style="flex:1;min-width:0;">
+        <div class="doc-name">${doc.name}</div>
+        <div class="doc-meta">${doc.type} · ${doc.year || 'N/A'}${doc.driveFileId ? ' · 📁 Drive' : ''}</div>
+      </div>
+      ${hasLink ? `<a href="${doc.url}" target="_blank" class="doc-link" title="Open">↗</a>` : ''}
+      ${isAdmin ? `<div class="doc-admin-strip">
+        <button class="btn-rename" onclick="openRenameModal('${doc.id}');event.stopPropagation()">✏</button>
+        <button class="btn-danger" onclick="deleteDoc('${doc.id}');event.stopPropagation()">🗑</button>
+      </div>` : ''}`;
+
+    if (!isAdmin && hasLink) {
+      card.style.cursor = 'pointer';
+      card.onclick = () => window.open(doc.url, '_blank');
+    }
+    grid.appendChild(card);
+  });
+}
+
+function typeIcon(t) {
+  return { PDF:'📄', DOCX:'📝', XLS:'📊', PPT:'📊', CIRCULAR:'📋' }[t] || '📁';
+}
+
+function refreshAdminCatSelect() {
+  const sel = document.getElementById('newDocCat');
+  sel.innerHTML = '<option value="">-- Select Category --</option>';
+  CATEGORIES.forEach(c => {
+    sel.innerHTML += `<option value="${c.id}">${c.icon} ${c.name}</option>`;
+  });
+}
+
+function renderAdminDocList() {
+  const list = document.getElementById('adminDocList');
+  if (!DOCS.length) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:.85rem;">No documents yet.</p>';
+    return;
+  }
+  list.innerHTML = DOCS.map(doc => {
+    const cat = CATEGORIES.find(c => c.id === doc.cat);
+    return `<div class="admin-doc-item">
+      <span>${typeIcon(doc.type)}</span>
+      <span class="admin-doc-label">${doc.name}</span>
+      <span class="admin-doc-cat">${cat ? cat.name : doc.cat}</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:.62rem;color:var(--muted);">${doc.year || ''}</span>
+      ${doc.driveFileId ? '<span class="fb-badge">📁 Drive</span>' : '<span class="local-badge">Local</span>'}
+      ${doc.url && doc.url !== '#' ? `<a href="${doc.url}" target="_blank" style="color:var(--gold);font-size:.75rem;text-decoration:none;white-space:nowrap;">↗ Open</a>` : '<span></span>'}
+      <button class="btn-rename" onclick="openRenameModal('${doc.id}')">✏ Rename</button>
+      <button class="btn-danger" onclick="deleteDoc('${doc.id}')">🗑 Delete</button>
+    </div>`;
+  }).join('');
+}
+
+function renderFbBanner() {
+  const el = document.getElementById('fbBanner');
+  if (isFirebase) {
+    el.innerHTML = `<div class="fb-banner ok">
+      <div class="fb-banner-icon">📁</div>
+      <div>
+        <div class="fb-banner-title">Firebase + Google Drive Connected</div>
+        <div class="fb-banner-body">All files are uploaded directly to Google Drive (no storage cost). Document records are saved in Firestore. Changes sync in real-time across all users. Make sure you have set your <strong>OAuth Client ID</strong> and enabled the <strong>Google Drive API</strong> in Google Cloud Console.</div>
+      </div>
+    </div>`;
+  } else {
+    el.innerHTML = `<div class="fb-banner warn">
+      <div class="fb-banner-icon">⚠️</div>
+      <div>
+        <div class="fb-banner-title">Firebase Not Configured</div>
+        <div class="fb-banner-body">
+          Running in <strong>local mode</strong> (data saved in browser only).<br>
+          To enable Firebase:
+          <br>1. Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → Create project
+          <br>2. Click ⚙ Project settings → Your apps → Web icon (<code>&lt;/&gt;</code>) → register app → copy <code>firebaseConfig</code>
+          <br>3. Open this HTML file in a text editor → find <code>PASTE_YOUR_apiKey_HERE</code> at the top of the &lt;script type="module"&gt; block → replace all 6 values
+          <br>4. In Firebase Console: enable <strong>Firestore Database</strong> + <strong>Storage</strong> (test mode is fine to start)
+          <br>5. Save & reload — Firebase will be live instantly ✅
+        </div>
+      </div>
+    </div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SEARCH
+// ═══════════════════════════════════════════════════════════
+function handleSearch(q) {
+  const box = document.getElementById('searchResults');
+  if (!q.trim()) { box.style.display = 'none'; return; }
+  const results = DOCS.filter(d => d.name.toLowerCase().includes(q.toLowerCase()));
+  if (!results.length) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = results.slice(0,8).map(d => {
+    const cat = CATEGORIES.find(c => c.id === d.cat);
+    return `<div class="search-result-item" onclick="searchOpen('${d.id}')">
+      <span class="sri-cat">${cat ? cat.name : d.cat}</span>
+      <span class="sri-name">${d.name}</span>
+    </div>`;
+  }).join('');
+}
+function searchOpen(docId) {
+  const doc = DOCS.find(d => d.id === docId);
+  if (!doc) return;
+  document.getElementById('searchResults').style.display = 'none';
+  document.getElementById('searchInput').value = '';
+  if (doc.url && doc.url !== '#') window.open(doc.url,'_blank');
+  else showSection(doc.cat);
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap') && !e.target.closest('#searchResults'))
+    document.getElementById('searchResults').style.display = 'none';
+});
+
+// ═══════════════════════════════════════════════════════════
+//  LOGIN / LOGOUT  (Firebase Auth)
+// ═══════════════════════════════════════════════════════════
+function openLoginModal() {
+  if (isAdmin) { openAdminPanel(); return; }
+  document.getElementById('loginErr').style.display    = 'none';
+  document.getElementById('loginSpinner').style.display = 'none';
+  document.getElementById('loginUser').value  = '';
+  document.getElementById('loginPass').value  = '';
+  openModal('loginModal');
+}
+async function doLogin() {
+  const email = document.getElementById('loginUser').value.trim();
+  const pass  = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginErr');
+  const spin  = document.getElementById('loginSpinner');
+  errEl.style.display  = 'none';
+  spin.style.display   = 'block';
+  document.querySelector('#loginModal .btn-gold').disabled = true;
+  try {
+    const cred = await FB.signInWithEmailAndPassword(FB.auth, email, pass);
+    if (cred.user.email !== FB.ADMIN_EMAIL) {
+      await FB.signOut(FB.auth);
+      errEl.textContent = 'This account is not authorised as admin.';
+      errEl.style.display = 'block';
+    } else {
+      closeModal('loginModal');
+      openAdminPanel();
+      showToast('✅ Logged in as Admin', 'ok');
+    }
+  } catch(e) {
+    errEl.textContent = 'Incorrect email or password. Try again.';
+    errEl.style.display = 'block';
+  }
+  spin.style.display = 'none';
+  document.querySelector('#loginModal .btn-gold').disabled = false;
+}
+async function doLogout() {
+  await FB.signOut(FB.auth);
+  showHome();
+  showToast('Logged out', 'info');
+}
+function openAdminPanel() {
+  document.getElementById('homeView').style.display    = 'none';
+  document.getElementById('sectionPanel').style.display = 'none';
+  document.getElementById('adminPanel').style.display   = 'block';
+  document.getElementById('homeBtn').style.display      = 'inline-block';
+  const user = FB.auth.currentUser;
+  const subtitle = document.getElementById('adminSubtitle');
+  if (subtitle && user) subtitle.textContent = '✅ Signed in as: ' + user.email;
+  refreshAdminCatSelect();
+  renderAdminDocList();
+  renderFbBanner();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════════
+function showHome() {
+  currentCatId = null;
+  document.getElementById('homeView').style.display   = 'block';
+  document.getElementById('sectionPanel').style.display = 'none';
+  document.getElementById('adminPanel').style.display  = 'none';
+  document.getElementById('homeBtn').style.display     = 'none';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchResults').style.display = 'none';
+  renderTiles();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FILE DRAG & DROP HELPERS
+// ═══════════════════════════════════════════════════════════
+function fileChosen(inputId, labelId) {
+  const f = document.getElementById(inputId).files[0];
+  const l = document.getElementById(labelId);
+  if (f) { l.style.display = 'block'; l.textContent = '📎 ' + f.name; }
+}
+function dzOver(e, zoneId) { e.preventDefault(); document.getElementById(zoneId).classList.add('drag-over'); }
+function dzLeave(zoneId) { document.getElementById(zoneId).classList.remove('drag-over'); }
+function dzDrop(e, zoneId, inputId, labelId) {
+  e.preventDefault();
+  document.getElementById(zoneId).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  document.getElementById(inputId).files = dt.files;
+  fileChosen(inputId, labelId);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MODAL HELPERS
+// ═══════════════════════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+function overlayClose(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
+
+// ═══════════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════════
+let toastT;
+function showToast(msg, type='info') {
+  const t = document.getElementById('toast');
+  t.className = type; t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
